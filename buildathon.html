@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Water Watch — NZ Ocean & Water Quality Dashboard</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<style>
+  :root {
+    --ink:#16211c; --paper:#f4f2ea; --line:#d8d4c4;
+    --good:#3f7a5c; --fair:#c98a2c; --poor:#b3452e; --user:#d97706;
+    --accent:#1f5e4a;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --ink:#eae7dc; --paper:#121815; --line:#2a332e; --accent:#6fb99a;
+    }
+  }
+  * { box-sizing:border-box; }
+  html,body{ height:100dvh; margin:0; overflow:hidden; }
+  body{
+    font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background:var(--paper); color:var(--ink);
+    display:flex; flex-direction:column;
+  }
+  header{ flex-shrink:0; padding:12px 20px; border-bottom:1px solid var(--line); display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap; }
+  header h1{ font-size:1.15rem; margin:0; font-weight:700; letter-spacing:0.2px; }
+  header .sub{ font-size:0.78rem; opacity:0.7; }
+  .btn-report { background:var(--poor); color:#fff; border:none; padding:8px 14px; border-radius:4px; font-weight:600; cursor:pointer; font-size:0.8rem; }
+  .btn-report:hover { opacity:0.9; }
+
+  #wrap{ position:relative; flex:1 1 auto; min-height:0; display:flex; }
+  #map{ flex:1; height:100%; background:var(--paper); }
+
+  .sidebar{
+    width:340px; border-left:1px solid var(--line); background:var(--paper); display:flex; flex-direction:column; font-size:0.82rem;
+  }
+  
+  /* Sidebar Tabs */
+  .tab-buttons { display:flex; border-bottom:1px solid var(--line); background:rgba(0,0,0,0.02); }
+  .tab-btn { flex:1; padding:10px 4px; border:none; background:transparent; color:var(--ink); font-weight:600; font-size:0.72rem; cursor:pointer; text-transform:uppercase; letter-spacing:0.03em; border-bottom:2px solid transparent; opacity:0.6; }
+  .tab-btn.active { border-bottom-color:var(--accent); opacity:1; color:var(--accent); }
+  
+  .tab-content { padding:16px; overflow-y:auto; flex:1; display:none; flex-direction:column; gap:16px; }
+  .tab-content.active { display:flex; }
+
+  .stat-card { background:rgba(0,0,0,0.03); padding:10px; border-radius:4px; border:1px solid var(--line); }
+  .stat-card h3 { margin:0 0 4px 0; font-size:0.75rem; text-transform:uppercase; color:var(--poor); }
+  .stat-card p { margin:0; font-size:0.8rem; opacity:0.85; }
+
+  .panel-section h2{ font-size:0.75rem; text-transform:uppercase; letter-spacing:0.06em; margin:0 0 8px; opacity:0.6; font-weight:700;}
+  .row{ display:flex; align-items:center; gap:7px; margin:5px 0; cursor:pointer; user-select:none; }
+  .dot{ width:10px; height:10px; border-radius:50%; flex-shrink:0; }
+  .dot.good{ background:var(--good);} .dot.fair{ background:var(--fair);} .dot.poor{ background:var(--poor);} .dot.user{ background:var(--user);}
+  .count{ margin-left:auto; opacity:0.5; font-variant-numeric:tabular-nums; font-size:0.75rem;}
+
+  /* Event List Cards */
+  .event-card { border:1px solid var(--line); padding:10px; border-radius:4px; background:rgba(0,0,0,0.015); }
+  .event-card h4 { margin:0 0 4px 0; font-size:0.85rem; color:var(--accent); }
+  .event-meta { font-size:0.72rem; opacity:0.75; margin-bottom:6px; display:flex; gap:8px; flex-wrap:wrap; }
+  .event-desc { font-size:0.78rem; margin:0 0 8px 0; line-height:1.3; }
+  .btn-rsvp { background:var(--accent); color:#fff; border:none; padding:4px 8px; border-radius:3px; font-size:0.7rem; font-weight:600; cursor:pointer; }
+
+  /* Leaderboard Cards */
+  .leader-item { display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid var(--line); }
+  .leader-rank { font-weight:700; font-size:0.9rem; color:var(--accent); width:20px; }
+  .leader-avatar { width:32px; height:32px; border-radius:50%; background:var(--line); display:flex; align-items:center; justify-content:center; font-weight:bold; font-size:0.75rem; color:var(--ink); }
+  .leader-info { flex:1; }
+  .leader-name { font-weight:600; font-size:0.82rem; }
+  .leader-stats { font-size:0.7rem; opacity:0.7; }
+  .badge-tag { display:inline-block; font-size:0.62rem; padding:1px 5px; border-radius:3px; background:rgba(63,122,92,0.15); color:var(--good); font-weight:bold; }
+
+  /* Popup styling */
+  .leaflet-popup-content-wrapper{ border-radius:4px; font-family:-apple-system,sans-serif; }
+  .pop h3{ margin:0 0 4px; font-size:0.95rem; font-family:inherit;}
+  .pop .badge{ display:inline-block; padding:2px 6px; border-radius:3px; font-size:0.65rem; font-weight:bold; text-transform:uppercase; margin-bottom:6px; color:#fff;}
+  .pop .badge.user-report { background:var(--user); }
+  .pop .badge.official { background:var(--accent); }
+  .pop dl{ margin:0; font-size:0.8rem; }
+  .pop dt{ opacity:0.6; margin-top:4px; font-size:0.72rem; }
+  .pop dd{ margin:0; font-weight:500; }
+  .pop .src{ margin-top:8px; padding-top:6px; border-top:1px solid var(--line); font-size:0.68rem; opacity:0.6; }
+  .pop .img-container{ margin-top:8px; border-radius:4px; overflow:hidden; border:1px solid var(--line); max-height:140px; }
+  .pop .img-container img{ width:100%; height:auto; display:block; object-fit:cover; }
+
+  /* Modal */
+  .modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:9999; display:none; align-items:center; justify-content:center; }
+  .modal { background:var(--paper); padding:20px; border-radius:6px; width:360px; max-width:90%; border:1px solid var(--line); max-height:90vh; overflow-y:auto; }
+  .modal h2 { margin-top:0; font-size:1rem; }
+  .modal label { display:block; font-size:0.75rem; margin-top:10px; font-weight:600; }
+  .modal input, .modal select, .modal textarea { width:100%; padding:6px; margin-top:4px; border:1px solid var(--line); border-radius:3px; background:transparent; color:inherit; }
+  .modal-actions { display:flex; justify-content:flex-end; gap:8px; margin-top:16px; }
+  .btn-sec { background:transparent; border:1px solid var(--line); padding:6px 12px; border-radius:3px; cursor:pointer; color:inherit; }
+
+  /* Image Upload Box */
+  .upload-box { border:1.5px dashed var(--line); padding:12px; text-align:center; border-radius:4px; margin-top:6px; cursor:pointer; background:rgba(0,0,0,0.01); }
+  .upload-box:hover { border-color:var(--accent); }
+  .upload-preview { width:100%; height:120px; border-radius:4px; object-fit:cover; display:none; margin-top:8px; }
+  .ai-tag { display:inline-block; font-size:0.68rem; background:rgba(31,94,74,0.1); color:var(--accent); padding:2px 6px; border-radius:3px; margin-top:4px; font-weight:600; }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>Water Watch — Community Water Quality & Fishing Monitor</h1>
+    <span class="sub">Aggregating Official Data, Real-Time Ocean Reports & Community Action</span>
+  </div>
+  <button class="btn-report" onclick="openModal()">+ Report Visible Issue</button>
+</header>
+
+<div id="wrap">
+  <div id="map"></div>
+  
+  <div class="sidebar">
+    <div class="tab-buttons">
+      <button class="tab-btn active" onclick="switchTab('filters')">Filters</button>
+      <button class="tab-btn" onclick="switchTab('events')">Events</button>
+      <button class="tab-btn" onclick="switchTab('leaderboard')">Leaderboard</button>
+    </div>
+
+    <!-- Tab 1: Filters -->
+    <div class="tab-content active" id="tab-filters">
+      <div class="stat-card">
+        <h3>NZ Clean Water Impact</h3>
+        <p><b>60.4%</b> of NZ catch comes from overexploited/collapsed stocks. Ocean health directly impacts aquaculture & public health.</p>
+      </div>
+
+      <div class="panel-section">
+        <h2>Filter Status</h2>
+        <label class="row"><input type="checkbox" data-status="good" checked><span class="dot good"></span>Good / Suitable<span class="count" id="c-good"></span></label>
+        <label class="row"><input type="checkbox" data-status="fair" checked><span class="dot fair"></span>Fair / Watch<span class="count" id="c-fair"></span></label>
+        <label class="row"><input type="checkbox" data-status="poor" checked><span class="dot poor"></span>Poor / Action Needed<span class="count" id="c-poor"></span></label>
+        <label class="row"><input type="checkbox" data-status="user" checked><span class="dot user"></span>User Reports<span class="count" id="c-user"></span></label>
+      </div>
+
+      <div class="panel-section">
+        <h2>Filter Source Type</h2>
+        <div id="type-filters"></div>
+      </div>
+    </div>
+
+    <!-- Tab 2: Upcoming Events -->
+    <div class="tab-content" id="tab-events">
+      <div class="panel-section">
+        <h2>Upcoming Community Action</h2>
+        <p style="margin:0 0 12px 0; font-size:0.75rem; opacity:0.8;">Join local cleanups, water testing workshops, and marine conservation drives.</p>
+        
+        <div class="event-card" style="margin-bottom:10px;">
+          <h4>Lyall Bay Coastal Cleanup</h4>
+          <div class="event-meta"><span>📅 Oct 10, 2026</span> • <span>📍 Lyall Bay Surf Life Saving</span></div>
+          <div class="event-desc">Community debris drive targeting microplastics along the Wellington south coast.</div>
+          <button class="btn-rsvp" onclick="alert('RSVP confirmed! See you at Lyall Bay.')">Join Event (14 Going)</button>
+        </div>
+
+        <div class="event-card" style="margin-bottom:10px;">
+          <h4>Hutt River Stream Water Blitz</h4>
+          <div class="event-meta"><span>📅 Oct 18, 2026</span> • <span>📍 Boulcott Riverbank</span></div>
+          <div class="event-desc">Hands-on water quality testing workshop. Learn how to take samples & log data.</div>
+          <button class="btn-rsvp" onclick="alert('RSVP confirmed! We will send testing kit info.')">Join Event (8 Going)</button>
+        </div>
+
+        <div class="event-card">
+          <h4>Ocean Health Awareness Talk</h4>
+          <div class="event-meta"><span>📅 Nov 2, 2026</span> • <span>📍 Online / Webinar</span></div>
+          <div class="event-desc">Exploring how citizen observations protect sustainable commercial fish stocks in NZ.</div>
+          <button class="btn-rsvp" onclick="alert('RSVP confirmed! Webinar link saved.')">Register (32 Going)</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab 3: Monthly Leaderboard -->
+    <div class="tab-content" id="tab-leaderboard">
+      <div class="panel-section">
+        <h2>Monthly Community Champions</h2>
+        <p style="margin:0 0 12px 0; font-size:0.75rem; opacity:0.8;">Top contributors helping improve New Zealand's Clean Water Score this month.</p>
+        
+        <div class="leader-item">
+          <div class="leader-rank">#1</div>
+          <div class="leader-avatar">AM</div>
+          <div class="leader-info">
+            <div class="leader-name">Aria M. <span class="badge-tag">Top Reporter</span></div>
+            <div class="leader-stats">14 Verified Reports • 3 Cleanups</div>
+          </div>
+        </div>
+
+        <div class="leader-item">
+          <div class="leader-rank">#2</div>
+          <div class="leader-avatar">LW</div>
+          <div class="leader-info">
+            <div class="leader-name">Liam W. <span class="badge-tag">Guardian Donor</span></div>
+            <div class="leader-stats">9 Reports • $150 Donated</div>
+          </div>
+        </div>
+
+        <div class="leader-item">
+          <div class="leader-rank">#3</div>
+          <div class="leader-avatar">TK</div>
+          <div class="leader-info">
+            <div class="leader-name">Te Koha R. <span class="badge-tag">Event Lead</span></div>
+            <div class="leader-stats">6 Reports • 4 Cleanups Hosted</div>
+          </div>
+        </div>
+
+        <div class="leader-item">
+          <div class="leader-rank">#4</div>
+          <div class="leader-avatar">SK</div>
+          <div class="leader-info">
+            <div class="leader-name">Sarah K.</div>
+            <div class="leader-stats">5 Verified Reports • 1 Event</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Report Issue Modal -->
+<div class="modal-overlay" id="reportModal">
+  <div class="modal">
+    <h2>Report Visible Water Issue</h2>
+    <form id="reportForm">
+      <label>Location Name / Area</label>
+      <input type="text" id="repLocation" placeholder="e.g. South Coast / Wellington Harbor" required>
+
+      <label>Issue Category</label>
+      <select id="repCategory">
+        <option>Algal Bloom / Scum</option>
+        <option>Plastic / Debris Cluster</option>
+        <option>Oil / Chemical Sheen</option>
+        <option>Water Discoloration / Turbidity</option>
+      </select>
+
+      <label>Latitude & Longitude (Approx)</label>
+      <div style="display:flex; gap:6px;">
+        <input type="number" step="any" id="repLat" placeholder="-41.30" required>
+        <input type="number" step="any" id="repLng" placeholder="174.80" required>
+      </div>
+
+      <label>Upload Photo (WAINET AI Analysis)</label>
+      <div class="upload-box" onclick="document.getElementById('repFile').click()">
+        <span id="uploadPrompt">📸 Click to attach image or take photo</span>
+        <input type="file" id="repFile" accept="image/*" style="display:none" onchange="previewImage(event)">
+        <img id="imgPreview" class="upload-preview" alt="Preview">
+      </div>
+      <div id="aiAnalysisBox" style="display:none; margin-top:6px;">
+        <span class="ai-tag">✨ WAINET AI: Spatial Optics Scan Ready</span>
+      </div>
+
+      <label>Observations / Notes</label>
+      <textarea id="repNotes" rows="2" placeholder="Describe what you see..."></textarea>
+
+      <div class="modal-actions">
+        <button type="button" class="btn-sec" onclick="closeModal()">Cancel</button>
+        <button type="submit" class="btn-report">Submit Report</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+const SITES = [
+  // Official Sites
+  {"id":"lake-gw-00257","name":"Lake Onoke Site 1","type":"Lake","lat":-41.3707,"lng":175.1387,"status":"poor","metric":"Trophic Level Index","metricValue":4.4,"time":"Official Monitoring","source":"LAWA Lake Quality Dataset","isUser":false},
+  {"id":"coastal-gw-10020","name":"Breaker Bay","type":"Coastal","lat":-41.3301,"lng":174.8320,"status":"good","metric":"Swim suitability","metricValue":"Suitable for swimming","time":"Official Monitoring","source":"LAWA Recreational Dataset","isUser":false},
+  {"id":"ff-niwa-001","name":"NIWA Mahanga Bay Facility","type":"Fish Farm","lat":-41.2928,"lng":174.8329,"status":"good","metric":"Seawater Quality","metricValue":"35.1 PSU","time":"Official Monitoring","source":"NIWA Marine Water Quality","isUser":false},
+  {"id":"ff-nzks-001","name":"Clay Point Salmon Farm","type":"Fish Farm","lat":-41.2333,"lng":174.3167,"status":"good","metric":"Dissolved Oxygen","metricValue":"7.8 mg/L","time":"Official Monitoring","source":"MPI Marine Farming Survey","isUser":false},
+  
+  // Predictive Commercial Fishing Alert
+  {"id":"ff-predictive-01","name":"Cook Strait Commercial Fishing Zone 3","type":"Predictive Alert","lat":-41.4500,"lng":174.5000,"status":"fair","metric":"Predictive Risk","metricValue":"Moderate Bloom Risk (Runoff Event)","time":"Updated 12h ago","source":"Water Watch Predictive Model","isUser":false},
+
+  // Mock Crowdsourced User Reports
+  {"id":"user-001","name":"Lyall Bay Marine Parade","type":"User Report","lat":-41.3330,"lng":174.7950,"status":"user","metric":"Reported Issue","metricValue":"Plastic & Microplastic Debris Cluster","time":"Reported 2 days ago","source":"Crowdsourced — User @KiwiOceanWatch","isUser":true, "image": null},
+  {"id":"user-002","name":"Palliser Bay Offshore","type":"User Report","lat":-41.4800,"lng":175.1000,"status":"user","metric":"Reported Issue","metricValue":"Unusual Algal Surface Film","time":"Reported 6 hours ago","source":"Crowdsourced — Rec Fisherman Report","isUser":true, "image": null}
+];
+
+const map = L.map('map').setView([-41.30, 174.85], 9);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  maxZoom: 18,
+  attribution: '&copy; OpenStreetMap contributors'
+}).addTo(map);
+
+const COLORS = { good:'#3f7a5c', fair:'#c98a2c', poor:'#b3452e', user:'#d97706' };
+
+function makeIcon(status){
+  const c = COLORS[status] || '#888';
+  return L.divIcon({
+    className: '',
+    html: `<div style="width:14px;height:14px;border-radius:50%;background:${c};border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,0.4);"></div>`,
+    iconSize: [14,14], iconAnchor: [7,7]
+  });
+}
+
+let markers = [];
+const cluster = L.layerGroup().addTo(map);
+
+function renderMarkers() {
+  cluster.clearLayers();
+  markers = SITES.map(s => {
+    const m = L.marker([s.lat, s.lng], { icon: makeIcon(s.status) });
+    const badgeClass = s.isUser ? 'user-report' : 'official';
+    
+    let imageHtml = '';
+    if (s.image) {
+      imageHtml = `<div class="img-container"><img src="${s.image}" alt="Uploaded photo"></div>`;
+    }
+
+    m.bindPopup(`
+      <div class="pop">
+        <span class="badge ${badgeClass}">${s.type}</span>
+        <h3>${s.name}</h3>
+        <dl>
+          <dt>${s.metric}</dt><dd>${s.metricValue}</dd>
+          <dt>Timeline</dt><dd>${s.time}</dd>
+        </dl>
+        ${imageHtml}
+        <div class="src">${s.source}</div>
+      </div>
+    `);
+    m._site = s;
+    return m;
+  });
+  applyFilters();
+}
+
+const statusState = { good:true, fair:true, poor:true, user:true };
+const typeState = {};
+
+function initFilters() {
+  const types = [...new Set(SITES.map(s => s.type))].sort();
+  const typeFiltersEl = document.getElementById('type-filters');
+  typeFiltersEl.innerHTML = '';
+  types.forEach(t => {
+    typeState[t] = true;
+    const count = SITES.filter(s => s.type === t).length;
+    const row = document.createElement('label');
+    row.className = 'row';
+    row.innerHTML = `<input type="checkbox" data-type="${t}" checked>${t}<span class="count">${count}</span>`;
+    typeFiltersEl.appendChild(row);
+  });
+  updateCounts();
+}
+
+function updateCounts() {
+  ['good','fair','poor','user'].forEach(st => {
+    const el = document.getElementById('c-'+st);
+    if(el) el.textContent = SITES.filter(s => s.status === st).length;
+  });
+}
+
+function applyFilters(){
+  markers.forEach(m => {
+    const s = m._site;
+    const show = statusState[s.status] && typeState[s.type];
+    if (show && !map.hasLayer(m)) cluster.addLayer(m);
+    if (!show && map.hasLayer(m)) cluster.removeLayer(m);
+  });
+}
+
+document.querySelectorAll('[data-status]').forEach(cb => {
+  cb.addEventListener('change', e => { statusState[e.target.dataset.status] = e.target.checked; applyFilters(); });
+});
+
+document.addEventListener('change', e => {
+  if (e.target.dataset.type){ typeState[e.target.dataset.type] = e.target.checked; applyFilters(); }
+});
+
+// Tab Switching Function
+function switchTab(tabName) {
+  document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+  
+  event.currentTarget.classList.add('active');
+  document.getElementById('tab-' + tabName).classList.add('active');
+}
+
+// Modal & Image Upload Handling
+let currentBase64Image = null;
+
+function openModal() { document.getElementById('reportModal').style.display = 'flex'; }
+function closeModal() { 
+  document.getElementById('reportModal').style.display = 'none'; 
+  currentBase64Image = null;
+  document.getElementById('imgPreview').style.display = 'none';
+  document.getElementById('uploadPrompt').style.display = 'inline';
+  document.getElementById('aiAnalysisBox').style.display = 'none';
+}
+
+function previewImage(event) {
+  const file = event.target.files[0];
+  if (file) {
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      currentBase64Image = e.target.result;
+      const preview = document.getElementById('imgPreview');
+      preview.src = currentBase64Image;
+      preview.style.display = 'block';
+      document.getElementById('uploadPrompt').style.display = 'none';
+      document.getElementById('aiAnalysisBox').style.display = 'block';
+    }
+    reader.readAsDataURL(file);
+  }
+}
+
+document.getElementById('reportForm').addEventListener('submit', function(e) {
+  e.preventDefault();
+  const category = document.getElementById('repCategory').value;
+  const notes = document.getElementById('repNotes').value;
+  
+  const newReport = {
+    id: 'user-' + Date.now(),
+    name: document.getElementById('repLocation').value,
+    type: 'User Report',
+    lat: parseFloat(document.getElementById('repLat').value),
+    lng: parseFloat(document.getElementById('repLng').value),
+    status: 'user',
+    metric: 'Reported Issue',
+    metricValue: `${category}: ${notes}` + (currentBase64Image ? ' (WAINET Scanned)' : ''),
+    time: 'Reported Just Now',
+    source: 'Crowdsourced — Live User Upload',
+    isUser: true,
+    image: currentBase64Image
+  };
+
+  SITES.unshift(newReport);
+  renderMarkers();
+  initFilters();
+  closeModal();
+  map.setView([newReport.lat, newReport.lng], 10);
+  this.reset();
+});
+
+// Initial Setup
+renderMarkers();
+initFilters();
+</script>
+</body>
+</html>
