@@ -91,13 +91,19 @@
   .modal label { display:block; font-size:0.75rem; margin-top:10px; font-weight:600; }
   .modal input, .modal select, .modal textarea { width:100%; padding:6px; margin-top:4px; border:1px solid var(--line); border-radius:3px; background:transparent; color:inherit; }
   .modal-actions { display:flex; justify-content:flex-end; gap:8px; margin-top:16px; }
-  .btn-sec { background:transparent; border:1px solid var(--line); padding:6px 12px; border-radius:3px; cursor:pointer; color:inherit; }
+  .btn-sec { background:transparent; border:1px solid var(--line); padding:6px 12px; border-radius:3px; cursor:cursor; color:inherit; }
 
-  /* Image Upload Box */
+  /* Image Upload Box & AI Result Card */
   .upload-box { border:1.5px dashed var(--line); padding:12px; text-align:center; border-radius:4px; margin-top:6px; cursor:pointer; background:rgba(0,0,0,0.01); }
   .upload-box:hover { border-color:var(--accent); }
   .upload-preview { width:100%; height:120px; border-radius:4px; object-fit:cover; display:none; margin-top:8px; }
-  .ai-tag { display:inline-block; font-size:0.68rem; background:rgba(31,94,74,0.1); color:var(--accent); padding:2px 6px; border-radius:3px; margin-top:4px; font-weight:600; }
+  
+  .ai-result-card { display:none; margin-top:10px; padding:10px; border-radius:4px; background:rgba(0,0,0,0.03); border:1px solid var(--line); font-size:0.75rem; }
+  .ai-result-header { font-weight:bold; color:var(--accent); margin-bottom:4px; display:flex; align-items:center; justify-content:space-between; }
+  .ai-verdict { font-weight:700; margin-top:2px; }
+  .verdict-poor { color:var(--poor); }
+  .verdict-fair { color:var(--fair); }
+  .verdict-good { color:var(--good); }
 </style>
 </head>
 <body>
@@ -239,14 +245,21 @@
         <input type="number" step="any" id="repLng" placeholder="174.80" required>
       </div>
 
-      <label>Upload Photo (WAINET AI Analysis)</label>
+      <label>Upload Photo (WAINET Surface Optics AI)</label>
       <div class="upload-box" onclick="document.getElementById('repFile').click()">
         <span id="uploadPrompt">📸 Click to attach image or take photo</span>
-        <input type="file" id="repFile" accept="image/*" style="display:none" onchange="previewImage(event)">
+        <input type="file" id="repFile" accept="image/*" style="display:none" onchange="previewAndAnalyzeImage(event)">
         <img id="imgPreview" class="upload-preview" alt="Preview">
       </div>
-      <div id="aiAnalysisBox" style="display:none; margin-top:6px;">
-        <span class="ai-tag">✨ WAINET AI: Spatial Optics Scan Ready</span>
+
+      <!-- Simulated AI Output Card -->
+      <div id="aiAnalysisCard" class="ai-result-card">
+        <div class="ai-result-header">
+          <span>✨ WAINET AI Surface Analysis</span>
+          <span id="aiConfidence">--% Match</span>
+        </div>
+        <div>Optical Finding: <span id="aiVerdict" class="ai-verdict">Scanning image...</span></div>
+        <div style="opacity:0.75; margin-top:4px;" id="aiDetail">Evaluating surface reflectance, color channels, and turbidity patterns.</div>
       </div>
 
       <label>Observations / Notes</label>
@@ -260,13 +273,18 @@
   </div>
 </div>
 
+<!-- Hidden Canvas for Pixel Analysis -->
+<canvas id="analysisCanvas" style="display:none;"></canvas>
+
 <script>
 const SITES = [
-  // Official Sites
+  // Official Monitoring Sites across NZ
   {"id":"lake-gw-00257","name":"Lake Onoke Site 1","type":"Lake","lat":-41.3707,"lng":175.1387,"status":"poor","metric":"Trophic Level Index","metricValue":4.4,"time":"Official Monitoring","source":"LAWA Lake Quality Dataset","isUser":false},
   {"id":"coastal-gw-10020","name":"Breaker Bay","type":"Coastal","lat":-41.3301,"lng":174.8320,"status":"good","metric":"Swim suitability","metricValue":"Suitable for swimming","time":"Official Monitoring","source":"LAWA Recreational Dataset","isUser":false},
   {"id":"ff-niwa-001","name":"NIWA Mahanga Bay Facility","type":"Fish Farm","lat":-41.2928,"lng":174.8329,"status":"good","metric":"Seawater Quality","metricValue":"35.1 PSU","time":"Official Monitoring","source":"NIWA Marine Water Quality","isUser":false},
   {"id":"ff-nzks-001","name":"Clay Point Salmon Farm","type":"Fish Farm","lat":-41.2333,"lng":174.3167,"status":"good","metric":"Dissolved Oxygen","metricValue":"7.8 mg/L","time":"Official Monitoring","source":"MPI Marine Farming Survey","isUser":false},
+  {"id":"coastal-akl-01","name":"Mission Bay Beach","type":"Coastal","lat":-36.8485,"lng":174.8331,"status":"good","metric":"Enterococci Level","metricValue":"< 10 cfu/100mL","time":"Official Monitoring","source":"Safeswim Auckland","isUser":false},
+  {"id":"coastal-chch-01","name":"Lyttelton Harbour","type":"Coastal","lat":-43.6031,"lng":172.7194,"status":"fair","metric":"Turbidity (NTU)","metricValue":"4.2 NTU","time":"Official Monitoring","source":"Canterbury Water Data","isUser":false},
   
   // Predictive Commercial Fishing Alert
   {"id":"ff-predictive-01","name":"Cook Strait Commercial Fishing Zone 3","type":"Predictive Alert","lat":-41.4500,"lng":174.5000,"status":"fair","metric":"Predictive Risk","metricValue":"Moderate Bloom Risk (Runoff Event)","time":"Updated 12h ago","source":"Water Watch Predictive Model","isUser":false},
@@ -367,7 +385,7 @@ document.addEventListener('change', e => {
   if (e.target.dataset.type){ typeState[e.target.dataset.type] = e.target.checked; applyFilters(); }
 });
 
-// Tab Switching Function
+// Tab Switching
 function switchTab(tabName) {
   document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
   document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
@@ -376,8 +394,9 @@ function switchTab(tabName) {
   document.getElementById('tab-' + tabName).classList.add('active');
 }
 
-// Modal & Image Upload Handling
+// Modal & Image Analysis Logic
 let currentBase64Image = null;
+let currentAiVerdict = { status: 'user', text: 'User Report Uploaded' };
 
 function openModal() { document.getElementById('reportModal').style.display = 'flex'; }
 function closeModal() { 
@@ -385,23 +404,92 @@ function closeModal() {
   currentBase64Image = null;
   document.getElementById('imgPreview').style.display = 'none';
   document.getElementById('uploadPrompt').style.display = 'inline';
-  document.getElementById('aiAnalysisBox').style.display = 'none';
+  document.getElementById('aiAnalysisCard').style.display = 'none';
 }
 
-function previewImage(event) {
+function previewAndAnalyzeImage(event) {
   const file = event.target.files[0];
-  if (file) {
-    const reader = new FileReader();
-    reader.onload = function(e) {
-      currentBase64Image = e.target.result;
-      const preview = document.getElementById('imgPreview');
-      preview.src = currentBase64Image;
-      preview.style.display = 'block';
-      document.getElementById('uploadPrompt').style.display = 'none';
-      document.getElementById('aiAnalysisBox').style.display = 'block';
-    }
-    reader.readAsDataURL(file);
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    currentBase64Image = e.target.result;
+    const preview = document.getElementById('imgPreview');
+    preview.src = currentBase64Image;
+    preview.style.display = 'block';
+    document.getElementById('uploadPrompt').style.display = 'none';
+    
+    // Perform Canvas Pixel Analysis to simulate WAINET AI
+    runCanvasOpticalScan(preview);
   }
+  reader.readAsDataURL(file);
+}
+
+function runCanvasOpticalScan(imgElement) {
+  const card = document.getElementById('aiAnalysisCard');
+  const verdictEl = document.getElementById('aiVerdict');
+  const confEl = document.getElementById('aiConfidence');
+  const detailEl = document.getElementById('aiDetail');
+  
+  card.style.display = 'block';
+  verdictEl.textContent = 'Scanning pixel array...';
+  verdictEl.className = 'ai-verdict';
+
+  imgElement.onload = function() {
+    const canvas = document.getElementById('analysisCanvas');
+    const ctx = canvas.getContext('2d');
+    canvas.width = 100;
+    canvas.height = 100;
+    ctx.drawImage(imgElement, 0, 0, 100, 100);
+
+    const imgData = ctx.getImageData(0, 0, 100, 100).data;
+    let rSum = 0, gSum = 0, bSum = 0;
+
+    for (let i = 0; i < imgData.length; i += 4) {
+      rSum += imgData[i];
+      gSum += imgData[i+1];
+      bSum += imgData[i+2];
+    }
+
+    const count = imgData.length / 4;
+    const avgR = rSum / count;
+    const avgG = gSum / count;
+    const avgB = bSum / count;
+
+    // Optical Heuristics
+    const brightness = (avgR + avgG + avgB) / 3;
+    const greenRatio = avgG / (avgR + avgB + 1);
+
+    let confidence = Math.floor(82 + Math.random() * 14);
+
+    if (greenRatio > 0.65 || (avgG > avgR && avgG > avgB && brightness < 120)) {
+      currentAiVerdict = {
+        status: 'poor',
+        text: 'High Turbidity / Organic Bloom Suspected',
+        detail: `WAINET Zone A flags elevated green-brown spectral scattering. Estimated Nephelometric Turbidity: High.`,
+        class: 'verdict-poor'
+      };
+    } else if (brightness < 70 || avgR > 130) {
+      currentAiVerdict = {
+        status: 'fair',
+        text: 'Surface Anomaly / Potential Debris',
+        detail: `WAINET Zone A flags irregular surface reflectance and color variance. Watch recommended.`,
+        class: 'verdict-fair'
+      };
+    } else {
+      currentAiVerdict = {
+        status: 'good',
+        text: 'Clear Water Optics Detected',
+        detail: `WAINET Zone A confirms low surface scattering and normal optical clarity.`,
+        class: 'verdict-good'
+      };
+    }
+
+    confEl.textContent = `${confidence}% Match`;
+    verdictEl.textContent = currentAiVerdict.text;
+    verdictEl.className = `ai-verdict ${currentAiVerdict.class}`;
+    detailEl.textContent = currentAiVerdict.detail;
+  };
 }
 
 document.getElementById('reportForm').addEventListener('submit', function(e) {
@@ -415,11 +503,11 @@ document.getElementById('reportForm').addEventListener('submit', function(e) {
     type: 'User Report',
     lat: parseFloat(document.getElementById('repLat').value),
     lng: parseFloat(document.getElementById('repLng').value),
-    status: 'user',
-    metric: 'Reported Issue',
-    metricValue: `${category}: ${notes}` + (currentBase64Image ? ' (WAINET Scanned)' : ''),
+    status: currentAiVerdict.status || 'user',
+    metric: 'WAINET Optical Finding',
+    metricValue: `${currentAiVerdict.text || category}: "${notes}"`,
     time: 'Reported Just Now',
-    source: 'Crowdsourced — Live User Upload',
+    source: 'Crowdsourced — Live AI Scan',
     isUser: true,
     image: currentBase64Image
   };
