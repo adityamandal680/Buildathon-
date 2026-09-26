@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Water Watch — NZ Ocean & Water Quality Dashboard</title>
+<title>WaiNet — NZ Ocean & Water Quality Dashboard</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
 <style>
@@ -91,7 +91,7 @@
   .modal label { display:block; font-size:0.75rem; margin-top:10px; font-weight:600; }
   .modal input, .modal select, .modal textarea { width:100%; padding:6px; margin-top:4px; border:1px solid var(--line); border-radius:3px; background:transparent; color:inherit; }
   .modal-actions { display:flex; justify-content:flex-end; gap:8px; margin-top:16px; }
-  .btn-sec { background:transparent; border:1px solid var(--line); padding:6px 12px; border-radius:3px; cursor:cursor; color:inherit; }
+  .btn-sec { background:transparent; border:1px solid var(--line); padding:6px 12px; border-radius:3px; cursor:pointer; color:inherit; }
 
   /* Image Upload Box & AI Result Card */
   .upload-box { border:1.5px dashed var(--line); padding:12px; text-align:center; border-radius:4px; margin-top:6px; cursor:pointer; background:rgba(0,0,0,0.01); }
@@ -110,7 +110,7 @@
 
 <header>
   <div>
-    <h1>Water Watch — Community Water Quality & Fishing Monitor</h1>
+    <h1>WaiNet</h1>
     <span class="sub">Aggregating Official Data, Real-Time Ocean Reports & Community Action</span>
   </div>
   <button class="btn-report" onclick="openModal()">+ Report Visible Issue</button>
@@ -245,7 +245,7 @@
         <input type="number" step="any" id="repLng" placeholder="174.80" required>
       </div>
 
-      <label>Upload Photo (WAINET Surface Optics AI)</label>
+      <label>Upload Photo (WaiNet Surface Optics AI)</label>
       <div class="upload-box" onclick="document.getElementById('repFile').click()">
         <span id="uploadPrompt">📸 Click to attach image or take photo</span>
         <input type="file" id="repFile" accept="image/*" style="display:none" onchange="previewAndAnalyzeImage(event)">
@@ -255,7 +255,7 @@
       <!-- Simulated AI Output Card -->
       <div id="aiAnalysisCard" class="ai-result-card">
         <div class="ai-result-header">
-          <span>✨ WAINET AI Surface Analysis</span>
+          <span>✨ WaiNet AI Surface Analysis</span>
           <span id="aiConfidence">--% Match</span>
         </div>
         <div>Optical Finding: <span id="aiVerdict" class="ai-verdict">Scanning image...</span></div>
@@ -287,7 +287,7 @@ const SITES = [
   {"id":"coastal-chch-01","name":"Lyttelton Harbour","type":"Coastal","lat":-43.6031,"lng":172.7194,"status":"fair","metric":"Turbidity (NTU)","metricValue":"4.2 NTU","time":"Official Monitoring","source":"Canterbury Water Data","isUser":false},
   
   // Predictive Commercial Fishing Alert
-  {"id":"ff-predictive-01","name":"Cook Strait Commercial Fishing Zone 3","type":"Predictive Alert","lat":-41.4500,"lng":174.5000,"status":"fair","metric":"Predictive Risk","metricValue":"Moderate Bloom Risk (Runoff Event)","time":"Updated 12h ago","source":"Water Watch Predictive Model","isUser":false},
+  {"id":"ff-predictive-01","name":"Cook Strait Commercial Fishing Zone 3","type":"Predictive Alert","lat":-41.4500,"lng":174.5000,"status":"fair","metric":"Predictive Risk","metricValue":"Moderate Bloom Risk (Runoff Event)","time":"Updated 12h ago","source":"WaiNet Predictive Model","isUser":false},
 
   // Mock Crowdsourced User Reports
   {"id":"user-001","name":"Lyall Bay Marine Parade","type":"User Report","lat":-41.3330,"lng":174.7950,"status":"user","metric":"Reported Issue","metricValue":"Plastic & Microplastic Debris Cluster","time":"Reported 2 days ago","source":"Crowdsourced — User @KiwiOceanWatch","isUser":true, "image": null},
@@ -419,7 +419,7 @@ function previewAndAnalyzeImage(event) {
     preview.style.display = 'block';
     document.getElementById('uploadPrompt').style.display = 'none';
     
-    // Perform Canvas Pixel Analysis to simulate WAINET AI
+    // Perform Canvas Pixel Analysis to simulate WaiNet AI
     runCanvasOpticalScan(preview);
   }
   reader.readAsDataURL(file);
@@ -466,21 +466,21 @@ function runCanvasOpticalScan(imgElement) {
       currentAiVerdict = {
         status: 'poor',
         text: 'High Turbidity / Organic Bloom Suspected',
-        detail: `WAINET Zone A flags elevated green-brown spectral scattering. Estimated Nephelometric Turbidity: High.`,
+        detail: `WaiNet Zone A flags elevated green-brown spectral scattering. Estimated Nephelometric Turbidity: High.`,
         class: 'verdict-poor'
       };
     } else if (brightness < 70 || avgR > 130) {
       currentAiVerdict = {
         status: 'fair',
         text: 'Surface Anomaly / Potential Debris',
-        detail: `WAINET Zone A flags irregular surface reflectance and color variance. Watch recommended.`,
+        detail: `WaiNet Zone A flags irregular surface reflectance and color variance. Watch recommended.`,
         class: 'verdict-fair'
       };
     } else {
       currentAiVerdict = {
         status: 'good',
         text: 'Clear Water Optics Detected',
-        detail: `WAINET Zone A confirms low surface scattering and normal optical clarity.`,
+        detail: `WaiNet Zone A confirms low surface scattering and normal optical clarity.`,
         class: 'verdict-good'
       };
     }
@@ -504,7 +504,7 @@ document.getElementById('reportForm').addEventListener('submit', function(e) {
     lat: parseFloat(document.getElementById('repLat').value),
     lng: parseFloat(document.getElementById('repLng').value),
     status: currentAiVerdict.status || 'user',
-    metric: 'WAINET Optical Finding',
+    metric: 'WaiNet Optical Finding',
     metricValue: `${currentAiVerdict.text || category}: "${notes}"`,
     time: 'Reported Just Now',
     source: 'Crowdsourced — Live AI Scan',
